@@ -35,6 +35,8 @@ from boltz.model.modules.utils import (
     log,
 )
 
+from boltz.data.write.pdb import to_pdb
+
 
 class DiffusionModule(Module):
     """Diffusion module"""
@@ -473,14 +475,26 @@ class AtomDiffusion(Module):
         token_a = None
 
         # gradually denoise
-        for sigma_tm, sigma_t, gamma in sigmas_and_gammas:
-            atom_coords, atom_coords_denoised = center_random_augmentation(
-                atom_coords,
-                atom_mask,
-                augmentation=True,
-                return_second_coords=True,
-                second_coords=atom_coords_denoised,
-            )
+        from tqdm import tqdm
+        if self.logmd: 
+            from logmd import LogMD
+            logmd = LogMD() 
+            structure = self.structure 
+            z = network_condition_kwargs['z_trunk']
+            pdistogram = self.distogram_module(z)
+
+        for iteration, (sigma_tm, sigma_t, gamma) in tqdm(enumerate(sigmas_and_gammas)):
+            if not self.logmd or not self.logmd_skip_center:
+                atom_coords, atom_coords_denoised = center_random_augmentation(
+                    atom_coords,
+                    atom_mask,
+                    augmentation=True,
+                    return_second_coords=True,
+                    second_coords=atom_coords_denoised,
+                )
+            else: 
+                # move (translate) to origin (0,0,0). 
+                atom_coords = atom_coords - torch.mean(atom_coords, axis=1) 
 
             sigma_tm, sigma_t, gamma = sigma_tm.item(), sigma_t.item(), gamma.item()
 
@@ -536,6 +550,36 @@ class AtomDiffusion(Module):
             )
 
             atom_coords = atom_coords_next
+
+            if iteration < self.logmd_start: continue 
+            if iteration % self.logmd_interval != 0: continue 
+            if not self.logmd: continue 
+                
+            structure.atoms["coords"] = atom_coords[atom_mask.bool()].cpu().numpy()
+
+            s_inputs = network_condition_kwargs['s_inputs']
+            s = network_condition_kwargs['s_trunk']
+            z = network_condition_kwargs['z_trunk']
+            feats = network_condition_kwargs['feats']
+
+            file = f"pdbs/{iteration}.pdb"
+            if self.logmd_confidence: 
+                confidences = self.confidence_module( 
+                    s_inputs=s_inputs.detach(),
+                    s=s.detach(),
+                    z=z.detach(),
+                    s_diffusion=( token_repr),
+                    x_pred=atom_coords.detach(), 
+                feats=feats,
+                pred_distogram_logits=pdistogram.detach(), 
+                multiplicity=multiplicity, 
+                run_sequentially=False,)
+                pdb_str = to_pdb(structure, plddts=confidences['plddt'][0])
+            else: 
+                pdb_str = to_pdb(structure)
+
+            pdb_str = "\n".join([line for line in pdb_str.split("\n") if line.startswith("ATOM") or line.startswith("HETATM")])
+            logmd(pdb_str) 
 
         return dict(sample_atom_coords=atom_coords, diff_token_repr=token_repr)
 

@@ -22,6 +22,9 @@ from boltz.data.types import MSA, Manifest, Record
 from boltz.data.write.writer import BoltzWriter
 from boltz.model.model import Boltz1
 
+import numpy as np 
+from boltz.data.types import Structure
+
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MODEL_URL = (
     "https://huggingface.co/boltz-community/boltz-1/resolve/main/boltz1_conf.ckpt"
@@ -539,6 +542,35 @@ def cli() -> None:
     help="Pairing strategy to use. Used only if --use_msa_server is set. Options are 'greedy' and 'complete'",
     default="greedy",
 )
+@click.option(
+    "--logmd",
+    is_flag=True,
+    help="Whether to log diffusion trajectory. Default is False.",
+)
+@click.option(
+    "--logmd_interval",
+    type=int,
+    help="Interval between frames to log in diffusion trajectory. Default is 4.",
+    default=4,
+)
+@click.option(
+    "--logmd_start",
+    type=int,
+    help="Step at which to start logging diffusion trajectory. Default is 100.",
+    default=100,
+)
+@click.option(
+    "--logmd_confidence",
+    is_flag=True,
+    help="Whether to include confidenc metrics in diffusion trajectory. Default is True. OBS: confidence model can be 100x slower than diffusion model.",
+    default=True,
+)
+@click.option(
+    "--logmd_skip_center",
+    is_flag=True,
+    help="Whether to skip centering in diffusion trajectory. Default is True.",
+    default=True,
+)
 def predict(
     data: str,
     out_dir: str,
@@ -559,6 +591,11 @@ def predict(
     use_msa_server: bool = False,
     msa_server_url: str = "https://api.colabfold.com",
     msa_pairing_strategy: str = "greedy",
+    logmd: bool = False,
+    logmd_interval: int = 4,
+    logmd_start: int = 100,
+    logmd_confidence: bool = True,
+    logmd_skip_center: bool = True,
 ) -> None:
     """Run predictions with Boltz-1."""
     # If cpu, write a friendly warning
@@ -662,6 +699,15 @@ def predict(
         ema=False,
     )
     model_module.eval()
+
+    model_module.structure_module.confidence_module = model_module.confidence_module
+    model_module.structure_module.distogram_module = model_module.distogram_module
+    model_module.structure_module.structure = Structure(**np.load(str(processed.targets_dir) + '/' + str(data[0]).replace('.fasta', '.npz')))
+    model_module.structure_module.logmd = logmd
+    model_module.structure_module.logmd_interval = logmd_interval
+    model_module.structure_module.logmd_start = logmd_start
+    model_module.structure_module.logmd_confidence = logmd_confidence
+    model_module.structure_module.logmd_skip_center = logmd_skip_center
 
     # Create prediction writer
     pred_writer = BoltzWriter(
