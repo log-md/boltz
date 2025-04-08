@@ -483,7 +483,8 @@ class AtomDiffusion(Module):
             z = network_condition_kwargs['z_trunk']
             pdistogram = self.distogram_module(z)
 
-        for iteration, (sigma_tm, sigma_t, gamma) in tqdm(enumerate(sigmas_and_gammas)):
+        #for iteration, (sigma_tm, sigma_t, gamma) in tqdm(enumerate(sigmas_and_gammas)):
+        for iteration, (sigma_tm, sigma_t, gamma) in enumerate(sigmas_and_gammas):
             if not self.logmd or not self.logmd_skip_center:
                 atom_coords, atom_coords_denoised = center_random_augmentation(
                     atom_coords,

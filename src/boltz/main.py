@@ -324,7 +324,8 @@ def process_inputs(  # noqa: C901, PLR0912, PLR0915
 
     # Parse input data
     records: list[Record] = existing_records if existing_records is not None else []
-    for path in tqdm(data):
+    #for path in tqdm(data):
+    for path in data:
         try:
             # Parse data
             if path.suffix in (".fa", ".fas", ".fasta"):
